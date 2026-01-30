@@ -52,12 +52,6 @@ class trackedPoint():
     def trimBuffer(self, size):
         self.buffer = self.buffer[:size]
 
-    # def X(self):
-        # return self.pos[0]
-
-    # def Y(self):
-        # return self.pos[1]
-
 #Helper Functions
 
 #Get XY coordinates from a contour

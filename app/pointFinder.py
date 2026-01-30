@@ -53,15 +53,7 @@ def findLED(frame, threshold):
                 track = trackedPoint(id, cont)
                 active_tracks.append(track)
                 id += 1
-            
-            # mom = cv2.moments(cont)
-            # if not mom['m10'] == 0:
-                # cont_xy = (int(mom['m10']/mom['m00']), int(mom['m01']/mom['m00']))
-                # active_tracks.update({id : 
-                                    # {"pos" : cont_xy,
-                                    #  "buffer" : [1],
-                                    #  "missed_frames" : 0}})
-                # id += 1
+
     # If buffer has ran first frame and has content
     else:
 
@@ -90,32 +82,6 @@ def findLED(frame, threshold):
             if not matched:
                     track.missedFrame()
 
-
-
-                # mom = cv2.moments(cont)
-
-                # # Get moments (due to a bug in OpenCV moments can return as 0 so check if not 0)
-                # if not mom['m10'] == 0:
-                    
-                    # #Get x/y coords of center of contour
-                    # cont_xy = (int(mom['m10']/mom['m00']), int(mom['m01']/mom['m00']))
-
-                    # # Get eucledian distance between the center of new contour and buffered track
-                    # distance 
-                    # # If distance is below threshold we assume the contour belongs to an active track
-                    # if distance < 10:
-                        # active_tracks[track]["pos"] = cont_xy # Update latest position of track
-                        # active_tracks[track]["missed_frames"] = 0 # Set missed frames to 0
-                        # active_tracks[track]["buffer"].append(1) # Append to buffer that LED was ON
-
-
-                        # matched = True
-                        # break
-            # If we didn't match the track to any new contour we count up missed frames
-            # if not matched:
-                # active_tracks[track]["missed_frames"] += 1 # Count up missed frames 
-                # active_tracks[track]["buffer"].append(0) # Append to buffer that LED was OFF 
-
     # If a track exceeds a threshold of missed_frames assume the track was noise and remove the dead track
     i = 0
     for track in active_tracks:
@@ -142,23 +108,4 @@ def findLED(frame, threshold):
                 
         buffer_timing = 0
 
-    # #If we buffered 30 frames empty active tracks and reset
-    # if buffer_timing == 60:
-        # print("Rolling buffer")
-        # for track in active_tracks:
-            # # Perform Fast Forier Transform
-            # signal = np.array(active_tracks[track]["buffer"]) - np.mean(active_tracks[track]["buffer"])
-            # ftt_result = np.fft.fft(signal)
-            # magnitudes = np.abs(ftt_result)
-            
-            # half_n = len(magnitudes) // 2
-            # relevant_magnitudes = magnitudes[:half_n]
-            # peak_bin = np.argmax(relevant_magnitudes)
-            # hz = peak_bin * (60 / len(active_tracks[track]["buffer"]))
-            # print(f"ID: {track}, Pos {active_tracks[track]["pos"]}, Buffered state: {active_tracks[track]["buffer"]} Frequency: {hz}")
-        # buffer_timing = 0
-
-
     return processed_frame, active_tracks
-
-    
