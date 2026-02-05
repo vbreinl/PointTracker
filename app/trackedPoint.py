@@ -1,17 +1,26 @@
 import cv2
 import numpy as np
+import logging
+from math import isclose
+
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(filename="/dev/stdout", level=logging.DEBUG)
+
 
 class trackedPoint():
-    def __init__(self, id, contour):
+    
 
-        self.id = id
+    def __init__(self, contour):
+        
+        self.contour = contour
+        self.id = None
         self.buffer = [1]
         self.missedFrames = 0
         self.pos = getContourXY(contour)
         self.X = self.pos[0]
         self.Y = self.pos[1]
         self.frequency = None
-
 
     # Remember new position and save that LED was on
     def updateTrack(self, pos : tuple):
@@ -45,12 +54,22 @@ class trackedPoint():
         peak_bin = np.argmax(relevant_magnitudes)
         hz = peak_bin * (fps / len(self.buffer))
         self.frequency = hz
-        print(f"ID: {self.id}, Pos {self.pos}, Buffered state: {self.buffer} Frequency: {hz}")
 
+        logger.debug(f"ID: {self.id}, Pos {self.pos}, Buffered state: {self.buffer} Frequency: {hz}")
         return hz
 
     def trimBuffer(self, size):
         self.buffer = self.buffer[:size]
+        
+    def setID(self, id):
+        self.id = id
+
+    # Checks if calculated frequency is close to identified frequency
+    def checkFrequency(self, fps, difference):
+
+        actualFrequency = self.getFrequency(fps)
+
+        return isclose(self.id, actualFrequency, rel_tol=difference)
 
 #Helper Functions
 
