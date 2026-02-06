@@ -4,15 +4,15 @@ import logging
 from math import isclose
 
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(filename="/dev/stdout", level=logging.DEBUG)
-
 
 class trackedPoint():
-    
 
+
+    logging.basicConfig(filename="/dev/stdout", level=logging.DEBUG)
+    logger = logging.getLogger(__name__)
+    
     def __init__(self, contour):
-        
+
         self.contour = contour
         self.id = None
         self.buffer = [1]
@@ -55,7 +55,7 @@ class trackedPoint():
         hz = peak_bin * (fps / len(self.buffer))
         self.frequency = hz
 
-        logger.debug(f"ID: {self.id}, Pos {self.pos}, Buffered state: {self.buffer} Frequency: {hz}")
+        #logger.debug(f"ID: {self.id}, Pos {self.pos}, Buffered state: {self.buffer} Frequency: {hz}")
         return hz
 
     def trimBuffer(self, size):
@@ -67,9 +67,9 @@ class trackedPoint():
     # Checks if calculated frequency is close to identified frequency
     def checkFrequency(self, fps, difference):
 
-        actualFrequency = self.getFrequency(fps)
+        self.getFrequency(fps)
 
-        return isclose(self.id, actualFrequency, rel_tol=difference)
+        return isclose(self.id, self.frequency, rel_tol=difference)
 
 #Helper Functions
 
@@ -83,3 +83,9 @@ def getContourXY(contour):
         return contour_xy
     else:
         return None
+
+#Get the length of a trackedPoints buffer
+@staticmethod
+def getBufferLength(track : trackedPoint):
+    
+    return len(track.buffer)
