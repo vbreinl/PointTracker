@@ -1,11 +1,12 @@
 import cv2
 import numpy as np
 import logging
-from trackedPoint import trackedPoint, getContourXY
+from trackedPoint import trackedPoint, getContourXY, getBufferLength
 from math import isclose
 
 
 logger = logging.getLogger(__name__)
+logger_led = logging.getLogger(name=f"{__name__}.LED-Tracking")
 logging.basicConfig(filename="/dev/stdout", level=logging.DEBUG)
 
 active_tracks = []
@@ -22,11 +23,11 @@ led2_frequency = 15
 led3_frequency = 20
 
 tracked_led_keepalive = 60  # Amount of missed frames till we assume led track is dead
-active_track_keepalive = 30 # Amount of missed frames till we assume search track is dead
-fps = 60
+active_track_keepalive = 45 # Amount of missed frames till we assume search track is dead
+fps = 120
 
 
-def findLED(frame, threshold):
+def findLED(frame, threshold, fps):
 
     global search_mode
     global buffer_timing
@@ -50,80 +51,43 @@ def findLED(frame, threshold):
 
     processed_frame = cv2.drawContours(image=colored_frame, contours=contours, contourIdx=-1, color=(0, 255, 0), thickness=3, hierarchy=hierarchy)
 
-#    contours = list(contours)
+    logger.debug("Processed frames and feteched contours")
 
-
-    #If buffer timing started fill buffer with contours
-    # if buffer_timing == 0:
-        # logger.debug("Buffer init")
-
-        # if search_mode:
-
-            # for cont in contours:
-                # matched = False
-                # cont_xy = getContourXY(cont)
-                # if cont_xy is not None:
-                    # if len(active_tracks) > 0:
-                        # for track in active_tracks:
-                                # distance = track.getDistance(cont_xy)
-
-                                # if distance is not None:
-                                    # # If distance is below threshold we assume the contour belongs to an active track
-                                    # if distance < match_distance:
-                                        # track.updateTrack(cont_xy)
-
-                                        # matched = True
-
-                    # if not matched: 
-                        # track = trackedPoint(cont)
-                        # active_tracks.append(track)
-
-                # # if getContourXY(cont) is not None:
-                # # # Create a track from contour
-                    # # track = trackedPoint(cont)
-                    # # active_tracks.append(track)
-            
-            # #Check if contour is new or already exisits as track
-            
-
-    # # If buffer has ran first frame and has content
-    # else:
-        
 
     #Search mode for leds we already IDed by frequency, we assume these are our LEDs
-    unmatched_contours = []
-    for led in tracked_leds.values():
-        matched = False
+    #We try to match contours to our stored LED tracks
+    if len(tracked_leds) is not 0:
+        unmatched_contours = []
+        for led in tracked_leds.values():
+            matched = False
 
+            for cont in contours:
 
-        for cont in contours:
-            #So we can pop items while in loop
-            # NEVER POP ITEMS WHILE ITERATING OVER IT AGAIN!!!
+                cont_xy = getContourXY(cont)
 
-            cont_xy = getContourXY(cont)
-            
-            if cont_xy is not None:
-            
-                distance = led.getDistance(cont_xy)
+                if cont_xy is not None:
+                
+                    distance = led.getDistance(cont_xy)
 
-                if distance is not None:
-                    # If distance is below threshold we assume the contour belongs to atracked led
-                    if distance < match_distance:
-                        led.updateTrack(cont_xy)
-                        #We dont remember matched contours
+                    if distance is not None:
+                        # If distance is below threshold we assume the contour belongs to atracked led
+                        if distance < match_distance:
+                            led.updateTrack(cont_xy)
 
-                        matched = True
-                        #break
-            
-            #We remember contours that are unmatched
+                            matched = True
+
+                #We remember contours that are unmatched
+                if not matched:
+                    unmatched_contours.append(cont)
+
+            #If we didn't match tracked led we missed a frame and count up
             if not matched:
-                unmatched_contours.append(cont)
+                led.missedFrame()
 
         contours = unmatched_contours
 
-        #If we didn't match tracked led we missed a frame and count up
-        if not matched:
-            led.missedFrame()
+    logger.debug("Matched contours to tracked LEDs")
+
 
     #If tracked led missed too many frames it is dead and we dont remember it
     alive_leds = {}
@@ -134,19 +98,64 @@ def findLED(frame, threshold):
         if not led.missedFrames >= tracked_led_keepalive:
             alive_leds.update(key = led)
             search_mode = True
+    
+        #Dead LED
         else:
-            # Dead LED
             logger.debug("Dead LED track")
     
     tracked_leds = alive_leds
+    
 
     #Search mode for unindentified tracks
     if search_mode:
-        
+
+        # We want to compare each track to each other if they are close to each other and remove one of them if they are very close
+        # Preferably the one with the smaller buffer
+        # Remember everything -> only forget if the distance is close and the buffer is smaller
+        if len(active_tracks) is not 0:
+            compare_track : trackedPoint
+
+            active_tracks.sort(key=getBufferLength, reverse=True)
+
+            # Use a set as it cant contain duplicates
+            real_tracks = []
+            duplicate_tracks = set()
+
+            for track_idx in range(len(active_tracks)):
+                
+                # When track is already marked as duplicate we continue with next element
+                if track_idx in duplicate_tracks:
+                    continue
+                
+                for compare_idx in range(track_idx + 1, len(active_tracks)):
+
+                    # When compare track is already marked as duplicate we continue with next element
+                    if compare_idx in duplicate_tracks:
+                        continue
+                    
+                    track = active_tracks[track_idx]
+                    compare_track = active_tracks[compare_idx]
+                    
+                    # Compared track is a duplicate
+                    if track.getDistance(compare_track.pos) < match_distance:
+
+                        #Since we sorted for buffer length we know track has larger one
+                        duplicate_tracks.add(track_idx)
+
+            for track in range(len(active_tracks)):
+                if track not in duplicate_tracks:
+                    real_tracks.append(active_tracks[track])
+
+            active_tracks = real_tracks
+            
+        logger.debug("Checked active tracks for duplicates")
+
+
+        #Match contours to active tracks 
         for track in active_tracks:
             track_matched = False
-            
             unmatched_contours = []
+
             for cont in contours:
                 matched = False
                 cont_xy = getContourXY(cont)
@@ -160,14 +169,15 @@ def findLED(frame, threshold):
                             if distance is not None:
                                 # If distance is below threshold we assume the contour belongs to an active track
                                 if distance < match_distance:
-                                    #TODO:  ISSUE
-                                    # We are updating the track mutliple times per frame because multiple contours are being matched
+                                    
+                                    #We are updating the track frames more than once so we check if already matched to one
                                     if not track_matched:
                                         track.updateTrack(cont_xy)
                                         track_matched = True
                                     
                                     matched = True
 
+                    #We only remember the contours which haven't been matched to a track
                     if not matched:
                         unmatched_contours.append(cont) 
                         #track = trackedPoint(cont)
@@ -178,10 +188,13 @@ def findLED(frame, threshold):
             if not track_matched:
                 track.missedFrame()
 
+        logger.debug("Matched contours to active_tracks")
+
         for cont in contours:
             if getContourXY(cont) is not None:
                 track = trackedPoint(cont)
                 active_tracks.append(track)
+        logger.debug("Loaded unmatched contours in active_tracks")
 
         # # Get all stored active tracks 
         # for track in active_tracks:
@@ -225,18 +238,6 @@ def findLED(frame, threshold):
 
     # If buffer has reached desired size we calc frequency and try to ID
     if buffer_timing == buffer_size:
-        
-        other_track : trackedPoint
-        tmp_tracks = active_tracks
-        unmatched_tracks = []
-        
-        #TODO
-        # We want to compare each track to each other if they are close to each other and remove one of them if they are very close
-        # Preferably the one with the smaller buffer
-        for track in active_tracks:
-            for other_track in tmp_tracks:
-                if not track.getDistance(other_track.pos) < match_distance:
-                    unmatched_tracks.append(track)
 
         logger.debug("Rolling buffer")
 
@@ -246,7 +247,7 @@ def findLED(frame, threshold):
             led = tracked_leds.get(key)
 
             if led.checkFrequency(fps, .1):
-                led.trimBuffer(300)
+                led.trimBuffer(150)
                 alive_leds.update(key = led)
                 continue
             else:
@@ -270,27 +271,31 @@ def findLED(frame, threshold):
 
                 #Check if the track has age
                 if len(track.buffer) > 180:
-                    track.trimBuffer(300)
+                    track.trimBuffer(150)
                     track.getFrequency(fps)
 
                     #If the track is close to a target frequency we give it an ID with the value of target frequency
-                    if isclose(track.frequency, led1_frequency, rel_tol=.1):
+                    if isclose(track.frequency, led1_frequency, rel_tol=.1) and led1_frequency not in tracked_leds:
                         track.setID(led1_frequency)
                         tracked_leds.update({track.id : track})
+                        logger.debug(f"Matched {track.pos} with {track.frequency} to {led1_frequency}HZ-LED")
 
                         #We dont need to remember matched tracks
                         matched = True
 
-                    if isclose(track.frequency, led2_frequency, rel_tol=.1):
+                    if isclose(track.frequency, led2_frequency, rel_tol=.1) and led2_frequency not in tracked_leds:
                         track.setID(led2_frequency)
                         tracked_leds.update({track.id : track})
+                        logger.debug(f"Matched {track.pos} with {track.frequency} to {led2_frequency}HZ-LED")
+
 
                         #We dont need to remember matched tracks
                         matched = True
 
-                    if isclose(track.frequency, led3_frequency, rel_tol=.1):
+                    if isclose(track.frequency, led3_frequency, rel_tol=.1) and led3_frequency not in tracked_leds:
                         track.setID(led3_frequency)
                         tracked_leds.update({track.id : track})
+                        logger.debug(f"Matched {track.pos} with {track.frequency} to {led3_frequency}HZ-LED")
 
                         #We dont need to remember matched tracks
                         matched = True
@@ -298,9 +303,10 @@ def findLED(frame, threshold):
                 #We only need to remember unmatched tracks
                 if not matched:
                     unmatched_tracks.append(track)
-            
+
             active_tracks = unmatched_tracks
 
         buffer_timing = 0
+        logger.debug("Reset buffer timing")
 
     return processed_frame, active_tracks, tracked_leds
